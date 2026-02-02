@@ -188,6 +188,13 @@ cython_debug/
 #  you could uncomment the following to ignore the entire vscode folder
 # .vscode/
 
+# Apple Health Dashboard - Health Data
+# Ignore all health export files and extracted data
+data/health_exports/
+!data/health_exports/README.md
+data/extracted_health_data/
+output/
+
 # Ruff stuff:
 .ruff_cache/
 
@@ -205,3 +212,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.DS_Store
