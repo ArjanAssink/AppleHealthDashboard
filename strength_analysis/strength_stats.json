@@ -1,0 +1,18 @@
+{
+  "total_workouts": 375,
+  "date_range": {
+    "start": "2022-02-03",
+    "end": "2026-02-01"
+  },
+  "average_workouts_per_week": 2.0718232044198897,
+  "median_workouts_per_week": 2.0,
+  "weeks_with_no_workouts": 0,
+  "weeks_with_1_workout": 51,
+  "weeks_with_2_workouts": 71,
+  "weeks_with_3_plus_workouts": 59,
+  "average_days_between_workouts": 3.9010695187165774,
+  "median_days_between_workouts": 3.0,
+  "average_workout_duration": 33.694286874771116,
+  "median_workout_duration": 33.5366336663564,
+  "total_workout_time": 12635.35757803917
+}
