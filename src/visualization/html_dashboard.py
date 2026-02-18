@@ -126,22 +126,20 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12);
   }
 
-  .filter-select {
-    padding: 5px 28px 5px 12px;
-    font-size: 13px;
-    font-family: inherit;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg);
-    color: var(--text);
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238e8e93'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 10px center;
+  .filter-pills {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   }
-  .filter-select:focus { outline: none; border-color: var(--accent); }
+  .filter-pill {
+    padding: 4px 12px; font-size: 12px; font-family: inherit;
+    border: 1.5px solid var(--border); border-radius: 16px;
+    background: var(--bg); color: var(--subtext);
+    cursor: pointer; transition: all .15s; user-select: none;
+    white-space: nowrap;
+  }
+  .filter-pill:hover { border-color: #bbb; }
+  .filter-pill.active {
+    color: #fff; border-color: transparent; font-weight: 600;
+  }
 
   /* ── Stat cards ───────────────────────────────────────────────── */
   .stat-grid {
@@ -254,8 +252,14 @@ const state = {
   workouts:    null,
   currentView:   'overview',
   granularity:   'daily',
-  workoutFilter: 'all',
+  workoutFilter: new Set(),   // empty = all types
+  workoutTypeColors: {},      // type -> color mapping
 };
+
+const WORKOUT_COLORS = [
+  '#ff6b35', '#4a90d9', '#50c878', '#9b59b6', '#e74c3c',
+  '#f39c12', '#1abc9c', '#e91e8b', '#3498db', '#8b4513',
+];
 
 // All active ECharts instances – disposed on every view transition
 const chartInstances = [];
@@ -619,10 +623,17 @@ function renderMainChart(data, gran) {
 // ══════════════════════════════════════════════════════════════════════════
 async function renderWorkouts() {
   const wk = await loadWorkouts();
-  state.workoutFilter = 'all';
+  state.workoutFilter = new Set();
 
-  const typeOptions = wk.types.slice().sort().map(t =>
-    `<option value="${t}">${t}</option>`
+  // Assign stable colors to sorted workout types
+  const sortedTypes = wk.types.slice().sort();
+  state.workoutTypeColors = {};
+  sortedTypes.forEach((t, i) => {
+    state.workoutTypeColors[t] = WORKOUT_COLORS[i % WORKOUT_COLORS.length];
+  });
+
+  const pills = sortedTypes.map(t =>
+    `<span class="filter-pill" data-type="${t}">${t}</span>`
   ).join('');
 
   document.getElementById('content').innerHTML = `
@@ -631,11 +642,12 @@ async function renderWorkouts() {
         <h2>Workouts</h2>
         <p id="wk-subtitle">${wk.total.toLocaleString()} workouts · ${wk.types.length} type(s)</p>
       </div>
-      <select class="filter-select" id="wk-type-filter">
-        <option value="all">All Types</option>
-        ${typeOptions}
-      </select>
     </div>
+    <div class="filter-pills" id="wk-type-filter">
+      <span class="filter-pill active" data-type="all" style="background:var(--text);border-color:var(--text)">All</span>
+      ${pills}
+    </div>
+    <div style="margin-top:16px"></div>
     <div class="wk-summary-grid" id="wk-summary-grid"></div>
     <div class="chart-card">
       <h3>Workout Calendar</h3>
@@ -643,7 +655,7 @@ async function renderWorkouts() {
     </div>
     <div class="chart-card">
       <h3>Weekly Frequency</h3>
-      <div id="wk-freq" style="height:200px"></div>
+      <div id="wk-freq" style="height:220px"></div>
     </div>
     <div class="chart-card">
       <h3>Recent Workouts</h3>
@@ -656,8 +668,48 @@ async function renderWorkouts() {
     </div>
   `;
 
-  document.getElementById('wk-type-filter').addEventListener('change', e => {
-    state.workoutFilter = e.target.value;
+  document.getElementById('wk-type-filter').addEventListener('click', e => {
+    const pill = e.target.closest('.filter-pill');
+    if (!pill) return;
+    const type = pill.dataset.type;
+    const allPill = document.querySelector('.filter-pill[data-type="all"]');
+
+    if (type === 'all') {
+      // Reset to all
+      state.workoutFilter = new Set();
+      document.querySelectorAll('.filter-pill').forEach(p => {
+        p.classList.remove('active');
+        p.style.background = '';
+        p.style.borderColor = '';
+      });
+      allPill.classList.add('active');
+      allPill.style.background = 'var(--text)';
+      allPill.style.borderColor = 'var(--text)';
+    } else {
+      // Toggle this type
+      if (state.workoutFilter.has(type)) {
+        state.workoutFilter.delete(type);
+        pill.classList.remove('active');
+        pill.style.background = '';
+        pill.style.borderColor = '';
+      } else {
+        state.workoutFilter.add(type);
+        const color = state.workoutTypeColors[type];
+        pill.classList.add('active');
+        pill.style.background = color;
+        pill.style.borderColor = color;
+      }
+      // Update "All" pill state
+      if (state.workoutFilter.size === 0) {
+        allPill.classList.add('active');
+        allPill.style.background = 'var(--text)';
+        allPill.style.borderColor = 'var(--text)';
+      } else {
+        allPill.classList.remove('active');
+        allPill.style.background = '';
+        allPill.style.borderColor = '';
+      }
+    }
     applyWorkoutFilter();
   });
 
@@ -665,29 +717,32 @@ async function renderWorkouts() {
 }
 
 function applyWorkoutFilter() {
-  const wk     = state.workouts;
-  const filter = state.workoutFilter;
-  const records = filter === 'all'
+  const wk       = state.workouts;
+  const selected = state.workoutFilter;
+  const isAll    = selected.size === 0;
+  const records  = isAll
     ? wk.records
-    : wk.records.filter(r => r.type === filter);
-  const byType = filter === 'all'
+    : wk.records.filter(r => selected.has(r.type));
+  const byType   = isAll
     ? wk.by_type || {}
-    : { [filter]: (wk.by_type || {})[filter] };
+    : Object.fromEntries([...selected].map(t => [t, (wk.by_type || {})[t]]).filter(([,v]) => v));
+  const activeTypes = isAll ? wk.types.slice().sort() : [...selected].sort();
 
   // Update subtitle
   const subtitle = document.getElementById('wk-subtitle');
   if (subtitle) {
-    const typeCount = filter === 'all' ? wk.types.length : 1;
+    const typeCount = isAll ? wk.types.length : selected.size;
     subtitle.textContent = `${records.length.toLocaleString()} workouts · ${typeCount} type(s)`;
   }
 
-  // Summary cards
+  // Summary cards with color accent
   const grid = document.getElementById('wk-summary-grid');
   grid.innerHTML = '';
   for (const [type, s] of Object.entries(byType)) {
     if (!s) continue;
+    const color = state.workoutTypeColors[type] || '#8e8e93';
     grid.innerHTML += `
-      <div class="stat-card">
+      <div class="stat-card" style="border-left: 4px solid ${color}">
         <div class="label">${type}</div>
         <div class="value">${s.count}</div>
         <div class="unit">${s.avg_duration_minutes} min avg · ${Math.round(s.total_duration_minutes / 60)}h total</div>
@@ -701,30 +756,43 @@ function applyWorkoutFilter() {
   document.getElementById('wk-calendar').style.height = calH + 'px';
   renderWorkoutCalendar(records, years, calH);
 
-  // Frequency
-  renderWorkoutFrequency(records);
+  // Frequency (stacked by type)
+  renderWorkoutFrequency(records, activeTypes);
 
-  // Recent table
+  // Recent table with color dot
   const recent = records.slice(-20).reverse();
-  document.getElementById('wk-tbody').innerHTML = recent.map(r => `
-    <tr>
+  document.getElementById('wk-tbody').innerHTML = recent.map(r => {
+    const color = state.workoutTypeColors[r.type] || '#8e8e93';
+    return `<tr>
       <td>${fmtDate(r.date)}</td>
-      <td>${r.type}</td>
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle"></span>${r.type}</td>
       <td>${r.duration_minutes} min</td>
       <td>${r.calories ? r.calories + ' kcal' : '—'}</td>
       <td>${r.source}</td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 }
 
 function renderWorkoutCalendar(records, years, containerH) {
   const chart = initChart('wk-calendar');
   if (!chart) return;
 
-  // Build [date, count] from workout records
+  // Build [date, count] and [date, types[]] from workout records
   const dayMap = {};
-  for (const r of records) dayMap[r.date] = (dayMap[r.date] || 0) + 1;
-  const calData = Object.entries(dayMap);
+  const dayTypes = {};
+  for (const r of records) {
+    dayMap[r.date] = (dayMap[r.date] || 0) + 1;
+    if (!dayTypes[r.date]) dayTypes[r.date] = {};
+    dayTypes[r.date][r.type] = (dayTypes[r.date][r.type] || 0) + 1;
+  }
+  // Determine dominant type color per day, with opacity based on count
+  const calData = Object.entries(dayMap).map(([date, count]) => {
+    const types = dayTypes[date] || {};
+    const dominant = Object.entries(types).sort((a,b) => b[1] - a[1])[0];
+    const baseColor = dominant ? (state.workoutTypeColors[dominant[0]] || '#34c759') : '#34c759';
+    const alpha = count === 1 ? 0.55 : count === 2 ? 0.78 : 1.0;
+    return { value: [date, count], itemStyle: { color: hexAlpha(baseColor, alpha) } };
+  });
 
   // One calendar component per year, stacked vertically
   const PER_YEAR_H  = 150;
@@ -750,50 +818,76 @@ function renderWorkoutCalendar(records, years, containerH) {
     type: 'heatmap',
     coordinateSystem: 'calendar',
     calendarIndex: i,
-    data: calData.filter(([d]) => d.startsWith(year)),
+    data: calData.filter(d => d.value[0].startsWith(year)),
   }));
 
   chart.setOption({
     animation: false,
     tooltip: {
       formatter: p => {
+        const date = p.value[0];
         const count = p.value[1];
-        return `${fmtDate(p.value[0])}: <b>${count} workout${count > 1 ? 's' : ''}</b>`;
+        const types = dayTypes[date] || {};
+        let html = `${fmtDate(date)}: <b>${count} workout${count > 1 ? 's' : ''}</b>`;
+        const entries = Object.entries(types).sort((a,b) => b[1] - a[1]);
+        if (entries.length > 0) {
+          html += '<div style="margin-top:4px">';
+          for (const [t, c] of entries) {
+            const color = state.workoutTypeColors[t] || '#8e8e93';
+            html += `<div style="font-size:11px"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${color};margin-right:4px"></span>${t}${c > 1 ? ' x' + c : ''}</div>`;
+          }
+          html += '</div>';
+        }
+        return html;
       },
     },
     visualMap: {
-      type: 'piecewise',
-      orient: 'horizontal',
-      left: 'center', bottom: 0,
-      pieces: [
-        { value: 0, color: '#ebedf0', label: '0'  },
-        { value: 1, color: '#9be9a8', label: '1'  },
-        { value: 2, color: '#40c463', label: '2'  },
-        { gte: 3,  color: '#216e39', label: '3+' },
-      ],
-      itemWidth: 12, itemHeight: 12,
-      textStyle: { color: '#8e8e93', fontSize: 11 },
+      show: false,
+      min: 0, max: 3,
+      inRange: { color: ['#ebedf0', '#ebedf0'] },
     },
     calendar: calendarDefs,
     series:   seriesDefs,
   });
 }
 
-function renderWorkoutFrequency(records) {
+function renderWorkoutFrequency(records, activeTypes) {
   const chart = initChart('wk-freq');
   if (!chart) return;
 
-  // Group by ISO week start (Monday)
-  const weekMap = {};
+  // Group by ISO week start (Monday) and type
+  const weekTypeMap = {};
+  const allWeeks = new Set();
   for (const r of records) {
     const monday = mondayOf(new Date(r.date + 'T00:00:00'));
-    weekMap[monday] = (weekMap[monday] || 0) + 1;
+    allWeeks.add(monday);
+    if (!weekTypeMap[monday]) weekTypeMap[monday] = {};
+    weekTypeMap[monday][r.type] = (weekTypeMap[monday][r.type] || 0) + 1;
   }
-  const weeks = Object.keys(weekMap).sort();
+  const weeks = [...allWeeks].sort();
+
+  // Build one stacked bar series per active type
+  const series = activeTypes.map(type => {
+    const color = state.workoutTypeColors[type] || '#8e8e93';
+    return {
+      type: 'bar',
+      name: type,
+      stack: 'workouts',
+      data: weeks.map(w => [w, (weekTypeMap[w] && weekTypeMap[w][type]) || 0]),
+      itemStyle: { color: hexAlpha(color, 0.85), borderRadius: [0,0,0,0] },
+      barMaxWidth: 16,
+      emphasis: { focus: 'series' },
+    };
+  });
 
   chart.setOption({
     animation: false,
-    grid: { top: 8, bottom: 36, left: 36, right: 16 },
+    grid: { top: activeTypes.length > 1 ? 30 : 8, bottom: 36, left: 36, right: 16 },
+    legend: activeTypes.length > 1 ? {
+      show: true, top: 0, left: 'center',
+      textStyle: { fontSize: 11, color: '#8e8e93' },
+      itemWidth: 10, itemHeight: 10,
+    } : { show: false },
     xAxis: {
       type: 'time',
       axisLine:  { lineStyle: { color: '#e5e5ea' } },
@@ -809,8 +903,17 @@ function renderWorkoutFrequency(records) {
     tooltip: {
       trigger: 'axis',
       formatter: params => {
-        const p = params[0];
-        return `Week of ${fmtDate(p.value[0])}: <b>${p.value[1]} workout${p.value[1]>1?'s':''}</b>`;
+        const nonZero = params.filter(p => p.value[1] > 0);
+        if (!nonZero.length) return '';
+        const total = nonZero.reduce((s, p) => s + p.value[1], 0);
+        let html = `<div style="font-size:12px;color:#8e8e93;margin-bottom:4px">Week of ${fmtDate(nonZero[0].value[0])}</div>`;
+        html += `<b>${total} workout${total > 1 ? 's' : ''}</b>`;
+        if (nonZero.length > 1 || activeTypes.length > 1) {
+          for (const p of nonZero) {
+            html += `<div style="font-size:11px;margin-top:2px">${p.marker} ${p.seriesName}: ${p.value[1]}</div>`;
+          }
+        }
+        return html;
       },
     },
     dataZoom: [
@@ -819,13 +922,7 @@ function renderWorkoutFrequency(records) {
         fillerColor: hexAlpha('#ff6b35', 0.12),
         handleStyle: { color: '#ff6b35', borderColor: '#ff6b35' } },
     ],
-    series: [{
-      type: 'bar',
-      name: 'Workouts',
-      data: weeks.map(w => [w, weekMap[w]]),
-      itemStyle: { color: hexAlpha('#ff6b35', 0.85), borderRadius: [3,3,0,0] },
-      barMaxWidth: 16,
-    }],
+    series,
   });
 }
 
