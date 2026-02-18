@@ -1,8 +1,8 @@
-# 🍏 Apple Health Dashboard
+# Apple Health Dashboard
 
-A Python-based dashboard for locally analyzing and visualizing your Apple Health data. This project allows you to explore your health metrics, trends, and insights from the Apple Health export files.
+A Python-based dashboard for locally analyzing and visualizing your Apple Health data. Converts Apple Health `.zip` exports into an interactive HTML dashboard powered by Apache ECharts.
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Export Your Apple Health Data
 
@@ -21,15 +21,12 @@ A Python-based dashboard for locally analyzing and visualizing your Apple Health
 ### 2. Set Up the Project
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/AppleHealthDashboard.git
+git clone https://github.com/ArjanAssink/AppleHealthDashboard.git
 cd AppleHealthDashboard
 
-# Create a virtual environment (recommended)
-python -m venv venv
+python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
@@ -38,104 +35,69 @@ pip install -r requirements.txt
 Place your Apple Health export `.zip` file in the `data/health_exports/` directory:
 
 ```bash
-# Copy your export file (replace with your actual filename)
 cp ~/Downloads/apple_health_export.zip data/health_exports/
 ```
 
-### 4. Run the Dashboard
+### 4. Run the Pipeline
 
 ```bash
-python main.py
+python3 main.py
 ```
 
-This will:
-- Parse your health data
-- Generate visualizations
-- Create an interactive HTML dashboard
-- Save all outputs in the `output/` directory
+This will parse your health data, export structured JSON files, and generate an interactive HTML dashboard in the `output/` directory.
 
 ### 5. View Your Dashboard
 
-Open the generated dashboard:
+The dashboard loads data via `fetch()`, so you need to serve it over HTTP:
 
 ```bash
-open output/dashboard.html
+python3 -m http.server 8000 --directory output
 ```
 
-## 📁 Project Structure
+Then open http://localhost:8000 in your browser.
+
+## Project Structure
 
 ```
 AppleHealthDashboard/
 ├── data/
-│   └── health_exports/          # Place your .zip files here (GIT IGNORED)
-│       └── README.md            # Instructions for health exports
-├── output/                      # Generated dashboards and visualizations (GIT IGNORED)
-├── config/                      # Configuration files
-│   └── config.json              # User configuration
+│   └── health_exports/          # Place your .zip files here (gitignored)
+├── output/                      # Generated dashboard and JSON data (gitignored)
+│   ├── index.html               # Interactive ECharts dashboard
+│   └── data/                    # Pre-aggregated JSON time series
+├── config/
+│   └── config.json              # Optional configuration
 ├── src/
-│   ├── data_processing/         # Data parsing and processing
-│   ├── visualization/           # Dashboard generation and visualizations
-│   └── utils/                   # Utility functions and config management
-├── tests/                      # Test files
-├── main.py                     # Main entry point
-├── requirements.txt            # Python dependencies
-└── README.md                    # This file
+│   ├── data_processing/         # Health data parsing and JSON export
+│   ├── visualization/           # HTML dashboard generation
+│   └── utils/                   # Configuration management
+├── tests/
+├── main.py                      # Main entry point
+└── requirements.txt
 ```
 
-## 🔧 Configuration
+## Features
 
-The dashboard uses a configuration file at `config/config.json`. You can customize:
+- **Interactive charts** — time series with pan/zoom, daily/weekly/monthly granularity
+- **Workout tracking** — calendar heatmaps, weekly frequency, type filtering
+- **100+ metric types** — steps, heart rate, sleep, nutrition, body measurements, and more
+- **Category-grouped sidebar** with search
+- **Privacy first** — all processing is local, health data is gitignored
 
-- Visualization settings (themes, date formats)
-- Data processing options (exclude sources/types)
-- Dashboard behavior
+## Configuration
 
-## 📊 Features
+The dashboard uses an optional config file at `config/config.json`. You can customize visualization theme, timezone, excluded sources/types, and dashboard behavior.
 
-### Data Processing
-- ✅ Parse Apple Health XML export files
-- ✅ Extract structured health records with metadata
-- ✅ Handle various health data types (heart rate, steps, sleep, etc.)
-
-### Visualizations
-- ✅ Time series analysis for key metrics
-- ✅ Statistical distributions and trends
-- ✅ Interactive HTML dashboard
-- ✅ Exportable charts and graphs
-
-### Privacy
-- 🔒 **Your health data stays local** - no cloud processing
-- 🔒 **Git ignored** - health export files are never committed
-- 🔒 **Temporary processing** - extracted data is cleaned up automatically
-
-## 🛠️ Development
-
-### Running Tests
+## Development
 
 ```bash
+# Type checking
+mypy src/
+
+# Tests
 pytest
 ```
 
-### Adding New Visualizations
-
-1. Add new visualization functions to `src/visualization/dashboard.py`
-2. Update the HTML template to include the new visualizations
-3. Add any new dependencies to `requirements.txt`
-
-### Contributing
-
-Contributions are welcome! Please open issues for bugs or feature requests, and submit pull requests for improvements.
-
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🔗 Related Resources
-
-- [Apple Health Export Format Documentation](https://developer.apple.com/documentation/healthkit)
-- [Pandas Documentation](https://pandas.pydata.org/docs/)
-- [Matplotlib Documentation](https://matplotlib.org/stable/contents.html)
-
----
-
-**Note:** This project is designed to work with your personal health data. Always be cautious when handling sensitive health information and ensure you comply with all relevant privacy regulations.

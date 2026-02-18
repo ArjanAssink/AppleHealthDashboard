@@ -15,7 +15,8 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from data_processing.health_parser import AppleHealthParser
-from visualization.dashboard import generate_dashboard
+from data_processing.health_exporter import HealthDataExporter
+from visualization.html_dashboard import generate_html_dashboard
 from utils.config_manager import load_config, save_config
 
 def main() -> None:
@@ -50,12 +51,18 @@ def main() -> None:
         parser = AppleHealthParser(export_file)
         health_data = parser.parse()
         
-        # Generate dashboard
-        print("📊 Generating dashboard...")
-        generate_dashboard(health_data, config)
-        
+        # Export structured JSON data files for the HTML dashboard
+        output_dir = Path("output")
+        print("📦 Exporting structured JSON data files...")
+        exporter = HealthDataExporter(health_data, output_dir)
+        exporter.export()
+
+        # Generate the interactive HTML dashboard
+        print("🌐 Generating interactive HTML dashboard...")
+        dashboard_path = generate_html_dashboard(output_dir)
+
         print("✅ Dashboard generation complete!")
-        print("📈 Open the generated HTML files in your browser to view your health data.")
+        print(f"📈 Open {dashboard_path} in your browser to view your health data.")
         
     except Exception as e:
         print(f"❌ Error processing health data: {e}")

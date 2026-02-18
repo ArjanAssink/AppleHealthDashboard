@@ -193,6 +193,7 @@ cython_debug/
 data/health_exports/
 !data/health_exports/README.md
 data/extracted_health_data/
+data/processed/
 output/
 
 # Ruff stuff:
