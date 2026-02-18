@@ -16,7 +16,6 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from data_processing.health_parser import AppleHealthParser
 from data_processing.health_exporter import HealthDataExporter
-from visualization.dashboard import generate_dashboard
 from visualization.html_dashboard import generate_html_dashboard
 from utils.config_manager import load_config, save_config
 
@@ -52,10 +51,6 @@ def main() -> None:
         parser = AppleHealthParser(export_file)
         health_data = parser.parse()
         
-        # Generate legacy dashboard (charts as PNG + basic HTML)
-        print("📊 Generating legacy dashboard...")
-        generate_dashboard(health_data, config)
-
         # Export structured JSON data files for the HTML dashboard
         output_dir = Path("output")
         print("📦 Exporting structured JSON data files...")

@@ -126,6 +126,23 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12);
   }
 
+  .filter-select {
+    padding: 5px 28px 5px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238e8e93'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+  }
+  .filter-select:focus { outline: none; border-color: var(--accent); }
+
   /* ── Stat cards ───────────────────────────────────────────────── */
   .stat-grid {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -235,8 +252,9 @@ const state = {
   manifest:    null,
   metricCache: {},
   workouts:    null,
-  currentView: 'overview',
-  granularity: 'daily',
+  currentView:   'overview',
+  granularity:   'daily',
+  workoutFilter: 'all',
 };
 
 // All active ECharts instances – disposed on every view transition
@@ -601,21 +619,27 @@ function renderMainChart(data, gran) {
 // ══════════════════════════════════════════════════════════════════════════
 async function renderWorkouts() {
   const wk = await loadWorkouts();
+  state.workoutFilter = 'all';
 
-  const years  = [...new Set(wk.records.map(r => r.date.slice(0,4)))].sort();
-  const calH   = Math.max(200, years.length * 160 + 80);
+  const typeOptions = wk.types.slice().sort().map(t =>
+    `<option value="${t}">${t}</option>`
+  ).join('');
 
   document.getElementById('content').innerHTML = `
     <div class="page-header">
       <div>
         <h2>Workouts</h2>
-        <p>${wk.total.toLocaleString()} workouts · ${wk.types.length} type(s)</p>
+        <p id="wk-subtitle">${wk.total.toLocaleString()} workouts · ${wk.types.length} type(s)</p>
       </div>
+      <select class="filter-select" id="wk-type-filter">
+        <option value="all">All Types</option>
+        ${typeOptions}
+      </select>
     </div>
     <div class="wk-summary-grid" id="wk-summary-grid"></div>
     <div class="chart-card">
       <h3>Workout Calendar</h3>
-      <div id="wk-calendar" style="height:${calH}px"></div>
+      <div id="wk-calendar"></div>
     </div>
     <div class="chart-card">
       <h3>Weekly Frequency</h3>
@@ -632,9 +656,36 @@ async function renderWorkouts() {
     </div>
   `;
 
-  // Summary stat cards per workout type
+  document.getElementById('wk-type-filter').addEventListener('change', e => {
+    state.workoutFilter = e.target.value;
+    applyWorkoutFilter();
+  });
+
+  applyWorkoutFilter();
+}
+
+function applyWorkoutFilter() {
+  const wk     = state.workouts;
+  const filter = state.workoutFilter;
+  const records = filter === 'all'
+    ? wk.records
+    : wk.records.filter(r => r.type === filter);
+  const byType = filter === 'all'
+    ? wk.by_type || {}
+    : { [filter]: (wk.by_type || {})[filter] };
+
+  // Update subtitle
+  const subtitle = document.getElementById('wk-subtitle');
+  if (subtitle) {
+    const typeCount = filter === 'all' ? wk.types.length : 1;
+    subtitle.textContent = `${records.length.toLocaleString()} workouts · ${typeCount} type(s)`;
+  }
+
+  // Summary cards
   const grid = document.getElementById('wk-summary-grid');
-  for (const [type, s] of Object.entries(wk.by_type || {})) {
+  grid.innerHTML = '';
+  for (const [type, s] of Object.entries(byType)) {
+    if (!s) continue;
     grid.innerHTML += `
       <div class="stat-card">
         <div class="label">${type}</div>
@@ -643,11 +694,18 @@ async function renderWorkouts() {
       </div>`;
   }
 
-  renderWorkoutCalendar(wk.records, years, calH);
-  renderWorkoutFrequency(wk.records);
+  // Calendar
+  disposeAllCharts();
+  const years = [...new Set(records.map(r => r.date.slice(0,4)))].sort();
+  const calH  = Math.max(200, years.length * 160 + 80);
+  document.getElementById('wk-calendar').style.height = calH + 'px';
+  renderWorkoutCalendar(records, years, calH);
 
-  // Recent workouts table
-  const recent = wk.records.slice(-20).reverse();
+  // Frequency
+  renderWorkoutFrequency(records);
+
+  // Recent table
+  const recent = records.slice(-20).reverse();
   document.getElementById('wk-tbody').innerHTML = recent.map(r => `
     <tr>
       <td>${fmtDate(r.date)}</td>
