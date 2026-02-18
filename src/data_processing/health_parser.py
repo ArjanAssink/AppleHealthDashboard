@@ -3,6 +3,7 @@
 Apple Health Data Parser
 
 Parses Apple Health export .zip files and extracts health data into structured format.
+Stores data in SQLite database for efficient querying and dashboard generation.
 """
 
 import zipfile
@@ -14,6 +15,10 @@ from datetime import datetime
 import json
 import tempfile
 import shutil
+
+# Import new data storage modules
+from data_storage.health_database import HealthDatabase
+from data_storage.schema_validator import SchemaValidator
 
 @dataclass
 class HealthRecord:
@@ -29,14 +34,23 @@ class HealthRecord:
 class AppleHealthParser:
     """Parser for Apple Health export files."""
     
-    def __init__(self, zip_file_path: Path):
+    def __init__(self, zip_file_path: Path, db_path: Optional[Path] = None):
         self.zip_file_path = zip_file_path
         self.temp_dir = None
+        self.db_path = db_path
+        self.validator = SchemaValidator()
         
-    def parse(self) -> List[HealthRecord]:
-        """Parse the Apple Health export file and return structured health data."""
+    def parse(self) -> HealthDatabase:
+        """Parse the Apple Health export file and store in database.
+        
+        Returns:
+            HealthDatabase instance with parsed data
+        """
         if not self.zip_file_path.exists():
             raise FileNotFoundError(f"Health export file not found: {self.zip_file_path}")
+        
+        # Initialize database
+        db = HealthDatabase(self.db_path) if self.db_path else HealthDatabase()
         
         # Extract the zip file to a temporary directory
         self.temp_dir = tempfile.mkdtemp()
@@ -55,17 +69,18 @@ class AppleHealthParser:
             if not xml_file:
                 raise FileNotFoundError("Could not find export.xml in the health data archive")
             
-            return self._parse_xml(xml_file)
+            # Parse and store data
+            self._parse_xml(xml_file, db)
+            
+            return db
             
         finally:
             # Clean up temporary directory
             if self.temp_dir and Path(self.temp_dir).exists():
                 shutil.rmtree(self.temp_dir)
     
-    def _parse_xml(self, xml_file: Path) -> List[HealthRecord]:
-        """Parse the Apple Health XML export file."""
-        records = []
-        
+    def _parse_xml(self, xml_file: Path, db: HealthDatabase):
+        """Parse the Apple Health XML export file and store in database."""
         try:
             # Parse the XML file
             tree = ET.parse(xml_file)
@@ -75,15 +90,13 @@ class AppleHealthParser:
             for record_elem in root.findall('.//Record'):
                 record = self._parse_record_element(record_elem)
                 if record:
-                    records.append(record)
+                    self._store_record(record, db)
             
             # Also look for Workout elements which contain valuable workout data
             for workout_elem in root.findall('.//Workout'):
                 workout_record = self._parse_workout_element(workout_elem)
                 if workout_record:
-                    records.append(workout_record)
-            
-            return records
+                    self._store_workout(workout_record, db)
             
         except ET.ParseError as e:
             raise ValueError(f"Error parsing XML file: {e}")
@@ -199,6 +212,50 @@ class AppleHealthParser:
         except (ValueError, AttributeError) as e:
             # Skip malformed workout records
             return None
+    
+    def _store_record(self, record: HealthRecord, db: HealthDatabase):
+        """Store a health record in the database after validation."""
+        # Convert HealthRecord to dictionary
+        record_dict = {
+            'record_type': record.record_type,
+            'source': record.source,
+            'unit': record.unit,
+            'value': record.value,
+            'start_date': record.start_date,
+            'end_date': record.end_date,
+            'metadata': record.metadata
+        }
+        
+        # Validate record
+        if self.validator.validate_health_record(record_dict):
+            db.insert_health_record(record_dict)
+        else:
+            print(f"⚠️ Skipping invalid record: {record.record_type} from {record.source}")
+    
+    def _store_workout(self, workout_record: HealthRecord, db: HealthDatabase):
+        """Store a workout record in the database after validation."""
+        # Extract workout-specific data from metadata
+        metadata = workout_record.metadata
+        
+        workout_dict = {
+            'workout_type': metadata.get('workout_type', 'UnknownWorkout'),
+            'source': workout_record.source,
+            'duration': metadata.get('duration', 0),
+            'duration_unit': metadata.get('duration_unit', 'min'),
+            'start_date': workout_record.start_date,
+            'end_date': workout_record.end_date,
+            'total_distance': metadata.get('total_distance'),
+            'total_distance_unit': metadata.get('total_distance_unit'),
+            'total_energy_burned': metadata.get('total_energy_burned'),
+            'total_energy_burned_unit': metadata.get('total_energy_burned_unit'),
+            'metadata': metadata
+        }
+        
+        # Validate workout
+        if self.validator.validate_workout(workout_dict):
+            db.insert_workout(workout_dict)
+        else:
+            print(f"⚠️ Skipping invalid workout: {workout_dict['workout_type']} from {workout_record.source}")
     
     def _parse_apple_date(self, date_str: str) -> datetime:
         """Parse Apple's date format into datetime object."""

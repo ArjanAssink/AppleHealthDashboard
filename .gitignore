@@ -195,6 +195,10 @@ data/health_exports/
 data/extracted_health_data/
 output/
 
+# Ignore processed health data (database and schema)
+data/processed/
+!data/processed/.gitkeep
+
 # Ruff stuff:
 .ruff_cache/
 

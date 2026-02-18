@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from data_processing.health_parser import AppleHealthParser
 from visualization.dashboard import generate_dashboard
 from utils.config_manager import load_config, save_config
+from data_storage.health_database import HealthDatabase
 
 def main() -> None:
     """Main entry point for the Apple Health Dashboard."""
@@ -45,14 +46,18 @@ def main() -> None:
     print(f"📁 Using health export: {export_file.name}")
     
     try:
-        # Parse the health data
+        # Parse the health data and store in database
         print("🔍 Parsing health data...")
         parser = AppleHealthParser(export_file)
-        health_data = parser.parse()
+        health_db = parser.parse()
         
-        # Generate dashboard
+        # Show database stats
+        stats = health_db.get_database_stats()
+        print(f"📊 Database stats: {stats['total_records']} records, {stats['total_workouts']} workouts")
+        
+        # Generate dashboard using database
         print("📊 Generating dashboard...")
-        generate_dashboard(health_data, config)
+        generate_dashboard(health_db, config)
         
         print("✅ Dashboard generation complete!")
         print("📈 Open the generated HTML files in your browser to view your health data.")
